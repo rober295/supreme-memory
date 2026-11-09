@@ -6,7 +6,7 @@ source.dir = .
 source.include_exts = py,kv,png,jpg,json,atlas
 source.exclude_patterns = test_logic.py,.venv/*,.github/*
 version = 2.6.0
-requirements = python3,kivy,pyjnius,openssl,certifi
+requirements = python3==3.11.5,hostpython3==3.11.5,kivy==2.3.0,pyjnius,openssl,certifi
 orientation = portrait
 fullscreen = 0
 
