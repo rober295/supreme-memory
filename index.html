@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15171f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>God Level Upgrade</title>
+<style>
+:root{--bg:#15171f;--pan:#1f2331;--ln:#323850;--tx:#eceef6;--mut:#9aa1b8;--gold:#f2b84b;--hp:#e5484d;--ok:#4cc38a;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 Georgia,"Times New Roman",serif;padding:env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom))}
+main{max-width:600px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin:0}h2{font-size:1.1rem;margin:18px 0 8px}h3{font-size:1rem;margin:0 0 4px}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mut{color:var(--mut);font-size:.92rem}.gold{color:var(--gold)}.ok{color:var(--ok)}
+.box{background:var(--pan);border:1px solid var(--ln);border-radius:10px;padding:14px;margin:12px 0}
+.bar{height:12px;background:#0e1016;border-radius:6px;overflow:hidden;margin:6px 0}.bar i{display:block;height:100%;background:var(--gold)}.bar.hp i{background:var(--hp)}
+input{width:100%;padding:11px;border-radius:8px;border:1px solid var(--ln);background:#0e1016;color:var(--tx);font:inherit;margin:4px 0}
+button{width:100%;padding:13px;border:0;border-radius:8px;background:var(--gold);color:#1a1405;font:700 1rem Georgia,serif;margin:6px 0;cursor:pointer}
+button.alt{background:transparent;border:1px solid var(--ln);color:var(--tx);font-weight:400}
+button:disabled{opacity:.4}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.tab{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--pan);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom)}
+.tab button{margin:0;border-radius:0;background:transparent;color:var(--mut);padding:16px 2px;font-weight:400}
+.tab button.on{color:var(--gold);box-shadow:inset 0 -3px var(--gold)}
+.tag{display:inline-block;border:1px solid var(--gold);color:var(--gold);border-radius:14px;padding:2px 10px;margin:3px 4px 3px 0;font-size:.88rem}
+.card{border-left:3px solid var(--gold);padding:4px 10px;margin:8px 0}
+details{margin:6px 0;color:var(--mut)}summary{cursor:pointer}
+.chat{max-height:44vh;overflow:auto}.chat p{margin:8px 0}.u{color:var(--gold)}
+.hide{display:none}
+#boot{padding:40px 16px;text-align:center}
+</style>
+</head>
+<body>
+<div id="boot">Завантажую гру… (перший раз потрібен інтернет, кілька секунд)</div>
+<main class="hide" id="app">
+  <div class="top"><h1>God Level Upgrade</h1><span class="gold" id="hdr"></span></div>
+  <section id="s-today"></section>
+  <section id="s-fight" class="hide"></section>
+  <section id="s-prof" class="hide"></section>
+  <section id="s-coach" class="hide"></section>
+</main>
+<nav class="tab hide" id="nav" aria-label="Розділи">
+  <button data-t="today" class="on">Сьогодні</button><button data-t="fight">Бій</button><button data-t="prof">Профіль</button><button data-t="coach">Тренер</button>
+</nav>
+
+<script type="text/x-python" id="glue">
+import json, logic as L
+from datetime import date
+PATH = "/data.json"
+D = None
+def init():
+    global D
+    D = L.load_data(PATH)
+def _save():
+    L.save_data(D, PATH)
+    return open(PATH, encoding="utf-8").read()
+def _out(**kw):
+    kw["save"] = _save()
+    return json.dumps(kw, ensure_ascii=False, default=str)
+def _plan():
+    return L.build_plan(D["profile"], date.today())
+def view():
+    t = date.today(); k = t.isoformat(); p = _plan()
+    ex = []
+    for i, e in enumerate(p["exercises"]):
+        info = L.EXERCISES[e["name"]]
+        ex.append(dict(e, idx=i, done=L.sets_done_for(D, k, i), steps=info["steps"], mistakes=info["mistakes"],
+                       easier=info["easier"], muscles=info["muscles"], rec=D["records"].get(e["name"], {})))
+    pr = D["profile"]; lv, x, need = L.level_info(pr["xp"])
+    return json.dumps({"name": p["name"], "rest": p["rest_day"], "diff": p["difficulty"], "ex": ex,
+        "done": D["workouts"].get(k, {}).get("done", False), "total": L.total_sets(p), "sets": L.sets_done(D, k),
+        "lv": lv, "xp": x, "need": need, "streak": L.compute_streak(D["workouts"], t), "title": pr.get("title"),
+        "coins": L.format_coins(D.get("coins", 0)), "key": D.get("api_key", "")}, ensure_ascii=False, default=str)
+def record(idx, reps, sec):
+    p = _plan(); ex = p["exercises"][idx]
+    return _out(res=L.record_set(D, date.today().isoformat(), idx, ex, int(reps), int(sec)))
+def finish():
+    return _out(res=L.finish_workout(D, _plan(), date.today()))
+def battle():
+    s = L.battle_state(D); s["boss"] = L.is_boss(s["name"]); s["win"] = L.window_seconds(s["name"])
+    s["maxhit"] = L.MAX_HIT_REPS
+    return _out(**s)
+def hit(reps, in_window):
+    res = L.battle_hit(D, int(reps), in_window=bool(in_window))
+    res["coins_txt"] = L.format_coins(D.get("coins", 0))
+    return _out(res=res)
+def profile():
+    pr = D["profile"]; lv, x, need = L.level_info(pr["xp"])
+    bad = []
+    for b in D["badges"]:
+        d, r = L.badge_info(b["name"]); bad.append({"name": b["name"], "desc": d, "rarity": r})
+    cards = [c for c in L.CARDS if c[0] in D.get("cards", [])]
+    return json.dumps({"lv": lv, "xp": x, "need": need, "title": pr.get("title"), "titles": D["titles"], "badges": bad,
+        "cards": [{"name": c[0], "rarity": c[1], "phrase": c[2]} for c in cards], "all_cards": len(L.CARDS),
+        "records": D["records"], "muscles": L.muscle_levels(D), "kills": D.get("kills", {}),
+        "streak": L.compute_streak(D["workouts"], date.today())}, ensure_ascii=False, default=str)
+def set_key(k):
+    D["api_key"] = k.strip()
+    return _out()
+def coach_offline(q):
+    ans, ctx = L.coach_answer(q, D, date.today(), D.get("chat_context", ""))
+    D["chat_context"] = ctx or ""
+    return ans
+def ai_prep(q):
+    return json.dumps({"system": L.ai_system_prompt(D, date.today()), "messages": L.ai_messages(D, q), "model": L.AI_MODEL,
+                       "key": D.get("api_key", "")}, ensure_ascii=False)
+def chat_store(q, a):
+    from datetime import datetime
+    D.setdefault("chat_history", []).append({"q": q, "a": a, "time": datetime.now().isoformat(timespec="minutes")})
+    D["chat_history"] = D["chat_history"][-50:]
+    return _out()
+def history():
+    return json.dumps(D.get("chat_history", [])[-12:], ensure_ascii=False)
+def reset():
+    global D
+    D = L.fresh_data()
+    return _out()
+</script>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const SK="glu_web_data_v2";let py,G={};
+function call(fn,...a){const r=G[fn](...a);return typeof r==="string"?JSON.parse(r):r}
+function persist(o){try{localStorage.setItem(SK,o.save)}catch(e){}}
+function mut(fn,...a){const o=call(fn,...a);persist(o);return o}
+
+async function boot(){
+  try{
+    py=await loadPyodide();
+    const logic=await (await fetch("logic.py",{cache:"no-cache"})).text();
+    py.FS.writeFile("/logic.py",logic);
+    let saved=null;try{saved=localStorage.getItem(SK)}catch(e){}
+    if(saved)py.FS.writeFile("/data.json",saved);
+    py.runPython("import sys\nsys.path.insert(0,'/')");
+    py.runPython($("glue").textContent);
+    for(const n of ["init","view","record","finish","battle","hit","profile","set_key","coach_offline","ai_prep","chat_store","history","reset"])G[n]=py.globals.get(n);
+    G.init();
+    $("boot").classList.add("hide");$("app").classList.remove("hide");$("nav").classList.remove("hide");
+    show("today");
+  }catch(e){$("boot").innerHTML="Не вдалося завантажити: "+esc(e.message)+"<br>Перевір, що поруч з index.html лежить logic.py, і що є інтернет."}
+}
+function show(t){
+  document.querySelectorAll(".tab button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
+  ["today","fight","prof","coach"].forEach(s=>$("s-"+s).classList.toggle("hide",s!==t));
+  ({today:rToday,fight:rFight,prof:rProf,coach:rCoach})[t]();
+}
+document.querySelectorAll(".tab button").forEach(b=>b.onclick=()=>show(b.dataset.t));
+const bar=(v,m,c)=>'<div class="bar '+(c||"")+'"><i style="width:'+Math.max(0,Math.min(100,v/m*100))+'%"></i></div>';
+
+/* ---------- Сьогодні ---------- */
+let msgToday="";
+function rToday(){
+  const v=call("view");$("hdr").textContent="Рів. "+v.lv+" · "+v.coins;
+  let h='<div class="box"><h3>'+esc(v.name)+(v.rest?" (день відновлення)":"")+'</h3><div class="mut">Важкість: '+esc(v.diff)+' · Серія: '+v.streak+' дн. · Титул: '+esc(v.title)+'</div>'+
+    bar(v.xp,v.need)+'<div class="mut">XP '+v.xp+' / '+v.need+'</div></div>';
+  v.ex.forEach(e=>{
+    const t=e.kind==="time",full=e.done>=e.sets;
+    h+='<div class="box"><h3>'+esc(e.name)+' <span class="'+(full?"ok":"mut")+'">'+e.done+'/'+e.sets+' підх.</span></h3>'+
+      '<div class="mut">Ціль: '+e.target+(t?" с":" повт.")+(e.rest?" · відпочинок "+e.rest+" с":"")+' · '+esc(e.muscles)+'</div>'+
+      '<details><summary>Як робити</summary><ol>'+e.steps.map(s=>"<li>"+esc(s)+"</li>").join("")+'</ol><p>Помилки: '+esc(e.mistakes)+'</p><p>Легше: '+esc(e.easier)+'</p></details>'+
+      (full?"":'<div class="row"><input id="in'+e.idx+'" type="number" inputmode="numeric" min="0" placeholder="'+(t?"секунди":"повторення")+'" value="'+e.target+'" aria-label="Результат підходу"><button data-i="'+e.idx+'" data-k="'+e.kind+'" class="rec">Записати підхід</button></div>')+'</div>';
+  });
+  h+='<div class="mut" aria-live="polite">'+esc(msgToday)+'</div><button id="fin">Завершити тренування ('+v.sets+'/'+v.total+')</button>';
+  $("s-today").innerHTML=h;
+  document.querySelectorAll(".rec").forEach(b=>b.onclick=()=>{
+    const n=parseInt($("in"+b.dataset.i).value);if(!(n>=0)){return}
+    const o=mut("record",b.dataset.i*1,b.dataset.k==="time"?0:n,b.dataset.k==="time"?n:0),r=o.res;
+    msgToday=r.ignored?"Усі підходи цієї вправи вже записані.":"Записано. +"+r.xp+" XP"+(r.pr?" · Новий рекорд!":"");rToday();});
+  $("fin").onclick=()=>{
+    const r=mut("finish").res;
+    msgToday=!r.ok?r.reason:"Тренування завершено"+(r.full?" повністю":" частково")+(r.bonus?". Бонус +"+r.bonus+" XP":"")+
+      (r.new&&r.new.length?". Нове: "+r.new.map(n=>n[1]).join(", "):"")+".";rToday();};
+}
+
+/* ---------- Бій ---------- */
+let fmsg="Зроби підхід, введи повторення й відкрий вікно удару.",t0=0,tick=null,win=6;
+function rFight(){
+  const b=call("battle");persist(b);win=b.win;
+  $("s-fight").innerHTML='<div class="box"><div class="mut">Монстр '+b.number+' з '+b.total+' · перемог: '+b.defeated+'</div>'+
+    '<h2 style="margin:4px 0">'+(b.boss?'<span style="color:var(--hp)">Бос: </span>':'')+esc(b.name)+'</h2>'+bar(b.left,b.hp,"hp")+'<div class="mut">'+b.left+' / '+b.hp+' HP'+(b.event_text?' · '+esc(b.event_text):'')+(b.shield?' · щит':'')+'</div></div>'+
+    '<div class="box"><input id="reps" type="number" inputmode="numeric" min="1" max="'+b.maxhit+'" placeholder="Повторень у підході" aria-label="Повторення"><button id="open">Відкрити вікно удару</button>'+
+    '<div class="bar hide" id="tw"><i id="tb" style="width:100%"></i></div><button id="hit" class="hide">Ударити!</button><div id="fm" aria-live="polite">'+esc(fmsg)+'</div></div>';
+  $("open").onclick=()=>{
+    if(!(parseInt($("reps").value)>0)){$("fm").textContent="Введи кількість повторень.";return}
+    t0=Date.now();$("open").disabled=true;$("hit").classList.remove("hide");$("tw").classList.remove("hide");
+    $("fm").textContent="Бий зараз! У тебе "+win+" с.";clearInterval(tick);
+    tick=setInterval(()=>{const l=win-(Date.now()-t0)/1000;$("tb").style.width=Math.max(0,l/win*100)+"%";
+      if(l<=0){clearInterval(tick);$("fm").textContent="Монстр ухиляється. Удар буде слабшим."}},100)};
+  $("hit").onclick=()=>{
+    clearInterval(tick);const inw=(Date.now()-t0)/1000<=win;
+    const o=mut("hit",parseInt($("reps").value),inw),r=o.res;
+    if(!r.ok){fmsg="Введи від 1 до "+b.maxhit+" повторень."}
+    else{const p=[];p.push(inw?"Влучив!":"Запізнився, урон вдвічі менший.");
+      if(r.killed)p.push((r.monster||"Монстр")+" переможений!");
+      if(r.card)p.push("Картка: "+r.card[0]+" ("+r.card[1]+")"+(r.card[3]?", дублікат":"")+".");
+      if(r.new&&r.new.length)p.push("Нове: "+r.new.map(n=>n[1]).join(", ")+".");
+      p.push("Монети: "+r.coins_txt+".");fmsg=p.join(" ")}
+    $("hdr").textContent=call("view").coins;rFight()};
+}
+
+/* ---------- Профіль ---------- */
+function rProf(){
+  const p=call("profile");
+  const musc=Object.entries(p.muscles).map(([g,v])=>'<div>'+esc(g)+' <span class="mut">'+v+'%</span>'+bar(v,100)+'</div>').join("");
+  const rec=Object.entries(p.records).filter(([k,v])=>v.best_reps||v.best_sec).map(([k,v])=>'<div>'+esc(k)+': <b>'+(v.best_reps?v.best_reps+" повт.":v.best_sec+" с")+'</b></div>').join("")||'<div class="mut">Рекордів поки немає.</div>';
+  $("s-prof").innerHTML='<div class="box"><h3>Рівень '+p.lv+' · '+esc(p.title)+'</h3>'+bar(p.xp,p.need)+'<div class="mut">XP '+p.xp+' / '+p.need+' · серія '+p.streak+' дн.</div></div>'+
+    '<h2>Титули</h2>'+p.titles.map(t=>'<span class="tag">'+esc(t)+'</span>').join("")+
+    '<h2>Значки</h2>'+(p.badges.length?p.badges.map(b=>'<div class="card"><b>'+esc(b.name)+'</b> <span class="mut">'+esc(b.rarity)+'</span><br><span class="mut">'+esc(b.desc)+'</span></div>').join(""):'<div class="mut">Значків поки немає.</div>')+
+    '<h2>Картки героїв ('+p.cards.length+'/'+p.all_cards+')</h2>'+(p.cards.length?p.cards.map(c=>'<div class="card"><b>'+esc(c.name)+'</b> <span class="mut">'+esc(c.rarity)+'</span><br><span class="mut">'+esc(c.phrase)+'</span></div>').join(""):'<div class="mut">Картки випадають після перемог над монстрами.</div>')+
+    '<h2>Рекорди</h2><div class="box">'+rec+'</div><h2>Карта м’язів</h2><div class="box">'+musc+'</div>'+
+    '<button class="alt" id="rs">Скинути весь прогрес</button>';
+  $("rs").onclick=()=>{if(confirm("Видалити весь прогрес без відновлення?")){mut("reset");show("prof")}};
+}
+
+/* ---------- Тренер ---------- */
+function drawChat(){const h=call("history");$("chat").innerHTML=h.length?h.map(e=>'<p><b class="u">Ти:</b> '+esc(e.q)+'</p><p><b>Тренер:</b> '+esc(e.a)+'</p>').join(""):'<div class="mut">Постав питання про вправи, відновлення чи план.</div>';$("chat").scrollTop=1e9}
+function rCoach(){
+  const v=call("view");
+  $("s-coach").innerHTML='<div class="box"><input id="key" type="password" placeholder="Ключ Anthropic (sk-ant-…), необов’язково" value="'+esc(v.key)+'" aria-label="API-ключ"><button class="alt" id="sk">Зберегти ключ</button><div class="mut" id="km">Без ключа відповідає офлайн-тренер. Ключ зберігається лише в цьому браузері.</div></div>'+
+    '<div class="box chat" id="chat" aria-live="polite"></div><input id="q" placeholder="Запитай тренера" aria-label="Питання"><button id="ask">Надіслати</button>';
+  drawChat();
+  $("sk").onclick=()=>{mut("set_key",$("key").value);$("km").textContent=$("key").value.trim()?"Ключ збережено на цьому пристрої.":"Ключ видалено."};
+  $("q").addEventListener("keydown",e=>{if(e.key==="Enter")$("ask").click()});
+  $("ask").onclick=async()=>{
+    const q=$("q").value.trim();if(!q)return;$("ask").disabled=true;let a="";
+    try{
+      const pr=call("ai_prep",q);if(!pr.key)throw new Error("немає ключа");
+      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"content-type":"application/json","x-api-key":pr.key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:pr.model,max_tokens:600,system:pr.system,messages:pr.messages})});
+      const j=await r.json();if(!r.ok)throw new Error(j.error&&j.error.message||r.status);
+      a=j.content.filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+    }catch(e){a=G.coach_offline(q)}
+    mut("chat_store",q,a);$("q").value="";$("ask").disabled=false;drawChat()};
+}
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
+boot();
+</script>
+</body>
+</html>
